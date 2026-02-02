@@ -1,15 +1,24 @@
 import os
+import secrets
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
-load_dotenv(ENV_PATH)
+load_dotenv(ENV_PATH, override=True)
 
 # OpenRouter configuration
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-120b")
 OPENROUTER_TEMPERATURE = float(os.getenv("OPENROUTER_TEMPERATURE", "0"))
+
+# JWT configuration - generate a default secret if not provided
+_DEFAULT_JWT_SECRET = secrets.token_hex(32)
+
+
+def get_jwt_secret() -> str:
+    """Get the JWT secret from environment or use a generated default."""
+    return os.getenv("JWT_SECRET", _DEFAULT_JWT_SECRET)
 
 # Database configuration
 DEFAULT_USER = "user"

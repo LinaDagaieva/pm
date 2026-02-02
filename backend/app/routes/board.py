@@ -1,41 +1,141 @@
 import sqlite3
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.database import (
+    create_board,
+    delete_board,
     fetch_board,
+    fetch_board_by_id,
+    get_board_owner,
     get_or_create_board,
     get_or_create_user,
+    list_boards,
     ordered_ids,
     resequence_positions,
+    update_board,
 )
-from app.dependencies import get_db, get_username
-from app.models import CardCreate, CardUpdate, ColumnCreate, ColumnUpdate
+from app.dependencies import get_authenticated_user, get_db
+from app.models import (
+    BoardCreate,
+    BoardListResponse,
+    BoardUpdate,
+    CardCreate,
+    CardUpdate,
+    ColumnCreate,
+    ColumnUpdate,
+)
 
 router = APIRouter()
 
 
-@router.get("/api/board")
-def get_board(
-    username: str = Depends(get_username),
+# Board management endpoints
+@router.get("/api/boards")
+def get_boards(
+    username: str = Depends(get_authenticated_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> BoardListResponse:
+    """List all boards for the authenticated user."""
+    user_id = get_or_create_user(conn, username)
+    boards = list_boards(conn, user_id)
+    return BoardListResponse(boards=boards)
+
+
+@router.post("/api/boards")
+def create_new_board(
+    payload: BoardCreate,
+    username: str = Depends(get_authenticated_user),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
+    """Create a new board for the authenticated user."""
+    user_id = get_or_create_user(conn, username)
+    board_id = create_board(conn, user_id, payload.title, payload.with_default_columns)
+    return {"id": str(board_id)}
+
+
+@router.get("/api/boards/{board_id}")
+def get_board_by_id(
+    board_id: int,
+    username: str = Depends(get_authenticated_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Get a specific board by ID."""
+    user_id = get_or_create_user(conn, username)
+    board = fetch_board_by_id(conn, board_id, user_id)
+    if not board:
+        raise HTTPException(status_code=404, detail="Board not found")
+    return board
+
+
+@router.patch("/api/boards/{board_id}")
+def update_board_by_id(
+    board_id: int,
+    payload: BoardUpdate,
+    username: str = Depends(get_authenticated_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Update a board's title."""
+    user_id = get_or_create_user(conn, username)
+    owner_id = get_board_owner(conn, board_id)
+    if owner_id != user_id:
+        raise HTTPException(status_code=404, detail="Board not found")
+    update_board(conn, board_id, payload.title)
+    return {"status": "ok"}
+
+
+@router.delete("/api/boards/{board_id}")
+def delete_board_by_id(
+    board_id: int,
+    username: str = Depends(get_authenticated_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Delete a board and all its columns/cards."""
+    user_id = get_or_create_user(conn, username)
+    owner_id = get_board_owner(conn, board_id)
+    if owner_id != user_id:
+        raise HTTPException(status_code=404, detail="Board not found")
+    delete_board(conn, board_id)
+    return {"status": "ok"}
+
+
+# Legacy endpoint - returns the first board or creates one
+@router.get("/api/board")
+def get_board(
+    username: str = Depends(get_authenticated_user),
+    conn: sqlite3.Connection = Depends(get_db),
+) -> dict:
+    """Get the default board (creates one if none exist)."""
     user_id = get_or_create_user(conn, username)
     return fetch_board(conn, user_id)
+
+
+def _get_board_id_for_user(
+    conn: sqlite3.Connection,
+    user_id: int,
+    board_id: int | None = None,
+) -> int:
+    """Get or validate board_id for a user."""
+    if board_id is not None:
+        owner_id = get_board_owner(conn, board_id)
+        if owner_id != user_id:
+            raise HTTPException(status_code=404, detail="Board not found")
+        return board_id
+    return get_or_create_board(conn, user_id)
 
 
 @router.post("/api/columns")
 def create_column(
     payload: ColumnCreate,
-    username: str = Depends(get_username),
+    board_id: int | None = Query(default=None),
+    username: str = Depends(get_authenticated_user),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     user_id = get_or_create_user(conn, username)
-    board_id = get_or_create_board(conn, user_id)
+    resolved_board_id = _get_board_id_for_user(conn, user_id, board_id)
 
     columns = conn.execute(
         "SELECT id FROM columns WHERE board_id = ? ORDER BY position",
-        (board_id,),
+        (resolved_board_id,),
     ).fetchall()
     ids = ordered_ids(columns)
 
@@ -47,11 +147,11 @@ def create_column(
 
     cursor = conn.execute(
         "INSERT INTO columns (board_id, title, position) VALUES (?, ?, ?)",
-        (board_id, payload.title, insert_position),
+        (resolved_board_id, payload.title, insert_position),
     )
     column_id = int(cursor.lastrowid)
     ids.insert(insert_position, column_id)
-    resequence_positions(conn, "columns", ids, "AND board_id = ?", (board_id,))
+    resequence_positions(conn, "columns", ids, "AND board_id = ?", (resolved_board_id,))
     conn.commit()
 
     return {"id": str(column_id)}
@@ -61,15 +161,16 @@ def create_column(
 def update_column(
     column_id: int,
     payload: ColumnUpdate,
-    username: str = Depends(get_username),
+    board_id: int | None = Query(default=None),
+    username: str = Depends(get_authenticated_user),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     user_id = get_or_create_user(conn, username)
-    board_id = get_or_create_board(conn, user_id)
+    resolved_board_id = _get_board_id_for_user(conn, user_id, board_id)
 
     column = conn.execute(
         "SELECT id FROM columns WHERE id = ? AND board_id = ?",
-        (column_id, board_id),
+        (column_id, resolved_board_id),
     ).fetchone()
     if not column:
         raise HTTPException(status_code=404, detail="Column not found")
@@ -83,14 +184,14 @@ def update_column(
     if payload.position is not None:
         columns = conn.execute(
             "SELECT id FROM columns WHERE board_id = ? ORDER BY position",
-            (board_id,),
+            (resolved_board_id,),
         ).fetchall()
         ids = ordered_ids(columns)
         if column_id in ids:
             ids.remove(column_id)
         insert_position = max(0, min(payload.position, len(ids)))
         ids.insert(insert_position, column_id)
-        resequence_positions(conn, "columns", ids, "AND board_id = ?", (board_id,))
+        resequence_positions(conn, "columns", ids, "AND board_id = ?", (resolved_board_id,))
 
     conn.commit()
     return {"status": "ok"}
@@ -99,15 +200,16 @@ def update_column(
 @router.delete("/api/columns/{column_id}")
 def delete_column(
     column_id: int,
-    username: str = Depends(get_username),
+    board_id: int | None = Query(default=None),
+    username: str = Depends(get_authenticated_user),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     user_id = get_or_create_user(conn, username)
-    board_id = get_or_create_board(conn, user_id)
+    resolved_board_id = _get_board_id_for_user(conn, user_id, board_id)
 
     column = conn.execute(
         "SELECT id FROM columns WHERE id = ? AND board_id = ?",
-        (column_id, board_id),
+        (column_id, resolved_board_id),
     ).fetchone()
     if not column:
         raise HTTPException(status_code=404, detail="Column not found")
@@ -117,9 +219,9 @@ def delete_column(
 
     remaining = conn.execute(
         "SELECT id FROM columns WHERE board_id = ? ORDER BY position",
-        (board_id,),
+        (resolved_board_id,),
     ).fetchall()
-    resequence_positions(conn, "columns", ordered_ids(remaining), "AND board_id = ?", (board_id,))
+    resequence_positions(conn, "columns", ordered_ids(remaining), "AND board_id = ?", (resolved_board_id,))
     conn.commit()
 
     return {"status": "ok"}
@@ -128,15 +230,16 @@ def delete_column(
 @router.post("/api/cards")
 def create_card(
     payload: CardCreate,
-    username: str = Depends(get_username),
+    board_id: int | None = Query(default=None),
+    username: str = Depends(get_authenticated_user),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     user_id = get_or_create_user(conn, username)
-    board_id = get_or_create_board(conn, user_id)
+    resolved_board_id = _get_board_id_for_user(conn, user_id, board_id)
 
     column = conn.execute(
         "SELECT id FROM columns WHERE id = ? AND board_id = ?",
-        (payload.column_id, board_id),
+        (payload.column_id, resolved_board_id),
     ).fetchone()
     if not column:
         raise HTTPException(status_code=404, detail="Column not found")
@@ -154,8 +257,8 @@ def create_card(
         insert_position = 0
 
     cursor = conn.execute(
-        "INSERT INTO cards (column_id, title, details, position) VALUES (?, ?, ?, ?)",
-        (payload.column_id, payload.title, payload.details, insert_position),
+        "INSERT INTO cards (column_id, title, details, position, due_date, priority) VALUES (?, ?, ?, ?, ?, ?)",
+        (payload.column_id, payload.title, payload.details, insert_position, payload.due_date, payload.priority),
     )
     card_id = int(cursor.lastrowid)
     ids.insert(insert_position, card_id)
@@ -169,11 +272,12 @@ def create_card(
 def update_card(
     card_id: int,
     payload: CardUpdate,
-    username: str = Depends(get_username),
+    board_id: int | None = Query(default=None),
+    username: str = Depends(get_authenticated_user),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     user_id = get_or_create_user(conn, username)
-    board_id = get_or_create_board(conn, user_id)
+    resolved_board_id = _get_board_id_for_user(conn, user_id, board_id)
 
     card = conn.execute(
         """
@@ -182,7 +286,7 @@ def update_card(
         JOIN columns ON cards.column_id = columns.id
         WHERE cards.id = ? AND columns.board_id = ?
         """,
-        (card_id, board_id),
+        (card_id, resolved_board_id),
     ).fetchone()
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")
@@ -197,6 +301,16 @@ def update_card(
             "UPDATE cards SET details = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
             (payload.details, card_id),
         )
+    if payload.due_date is not None:
+        conn.execute(
+            "UPDATE cards SET due_date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (payload.due_date if payload.due_date else None, card_id),
+        )
+    if payload.priority is not None:
+        conn.execute(
+            "UPDATE cards SET priority = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (payload.priority, card_id),
+        )
 
     current_column_id = int(card["column_id"])
     target_column_id = payload.column_id or current_column_id
@@ -204,7 +318,7 @@ def update_card(
     if payload.column_id is not None:
         column = conn.execute(
             "SELECT id FROM columns WHERE id = ? AND board_id = ?",
-            (payload.column_id, board_id),
+            (payload.column_id, resolved_board_id),
         ).fetchone()
         if not column:
             raise HTTPException(status_code=404, detail="Column not found")
@@ -246,11 +360,12 @@ def update_card(
 @router.delete("/api/cards/{card_id}")
 def delete_card(
     card_id: int,
-    username: str = Depends(get_username),
+    board_id: int | None = Query(default=None),
+    username: str = Depends(get_authenticated_user),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> dict:
     user_id = get_or_create_user(conn, username)
-    board_id = get_or_create_board(conn, user_id)
+    resolved_board_id = _get_board_id_for_user(conn, user_id, board_id)
 
     card = conn.execute(
         """
@@ -259,7 +374,7 @@ def delete_card(
         JOIN columns ON cards.column_id = columns.id
         WHERE cards.id = ? AND columns.board_id = ?
         """,
-        (card_id, board_id),
+        (card_id, resolved_board_id),
     ).fetchone()
     if not card:
         raise HTTPException(status_code=404, detail="Card not found")

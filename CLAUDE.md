@@ -79,6 +79,26 @@ PM_BASE_URL=http://localhost:8000 pytest tests/test_integration.py  # Integratio
 - Use `uv` as Python package manager in Docker.
 - Planning docs are in `docs/` - review `docs/PLAN.md` for context.
 
+## IMPORTANT: Backend Development
+
+**All backend code runs inside Docker.** Never run `pip install` or `python` commands directly on the host machine. This could affect the user's global Python environment.
+
+To run backend tests:
+```bash
+# Build and start the Docker container first
+./scripts/start-mac.sh
+
+# Run tests inside the container
+docker exec -it pm-app pytest tests/ -v
+
+# Or run specific tests
+docker exec -it pm-app pytest tests/test_auth_api.py -v
+```
+
+To add Python packages:
+1. Add them to `backend/requirements.txt`
+2. Rebuild the Docker image with `./scripts/start-mac.sh`
+
 
 ## DETAILED PLAN
 

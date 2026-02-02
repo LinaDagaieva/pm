@@ -3,6 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { initialData, type BoardData } from "@/lib/kanban";
+import type { BoardSummary } from "@/lib/api";
+
+const mockBoards: BoardSummary[] = [
+  { id: "1", title: "Test Board", created_at: "2024-01-01", updated_at: "2024-01-01" },
+];
 
 const getFirstColumn = () => screen.getAllByTestId(/column-/i)[0];
 
@@ -10,7 +15,17 @@ describe("KanbanBoard", () => {
   const renderBoard = () => {
     const Wrapper = () => {
       const [board, setBoard] = useState<BoardData>(() => initialData);
-      return <KanbanBoard board={board} onBoardChange={setBoard} />;
+      return (
+        <KanbanBoard
+          board={board}
+          boardId="1"
+          boards={mockBoards}
+          onBoardChange={setBoard}
+          onSelectBoard={() => {}}
+          onCreateBoard={() => {}}
+          onDeleteBoard={() => {}}
+        />
+      );
     };
 
     render(<Wrapper />);

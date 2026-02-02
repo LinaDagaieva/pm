@@ -15,13 +15,21 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { BoardSelector } from "@/components/BoardSelector";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
 import { createId, moveCard, type BoardData, type Column } from "@/lib/kanban";
+import type { BoardSummary } from "@/lib/api";
 
 type KanbanBoardProps = {
   board: BoardData;
+  boardId: string | null;
+  boards: BoardSummary[];
+  username?: string;
   onBoardChange: React.Dispatch<React.SetStateAction<BoardData>>;
+  onSelectBoard: (boardId: string) => void;
+  onCreateBoard: (title: string) => void;
+  onDeleteBoard: (boardId: string) => void;
   onLogout?: () => void;
   onRenameColumn?: (columnId: string, title: string) => void;
   onAddCard?: (columnId: string, title: string, details: string) => void;
@@ -32,7 +40,13 @@ type KanbanBoardProps = {
 
 export const KanbanBoard = ({
   board,
+  boardId,
+  boards,
+  username,
   onBoardChange,
+  onSelectBoard,
+  onCreateBoard,
+  onDeleteBoard,
   onLogout,
   onRenameColumn,
   onAddCard,
@@ -149,7 +163,7 @@ export const KanbanBoard = ({
       ...prev,
       cards: {
         ...prev.cards,
-        [id]: { id, title, details: details || "No details yet." },
+        [id]: { id, title, details: details || "No details yet.", due_date: null, priority: "none", labelIds: [] },
       },
       columns: prev.columns.map((column) =>
         column.id === columnId
@@ -187,7 +201,7 @@ export const KanbanBoard = ({
       <div className="pointer-events-none absolute bottom-0 right-0 h-[520px] w-[520px] translate-x-1/4 translate-y-1/4 rounded-full bg-[radial-gradient(circle,_rgba(117,57,145,0.18)_0%,_rgba(117,57,145,0.05)_55%,_transparent_75%)]" />
 
       <main className="relative mx-auto flex min-h-screen w-full flex-col gap-8 px-4 pb-12 pt-8 lg:px-8">
-        <header className="flex items-center justify-between gap-4 rounded-2xl border border-[var(--stroke)] bg-white/90 px-6 py-4 shadow-sm backdrop-blur">
+        <header className="relative z-20 flex items-center justify-between gap-4 rounded-2xl border border-[var(--stroke)] bg-white/90 px-6 py-4 shadow-sm backdrop-blur">
           <div className="flex items-center gap-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--accent-yellow)]">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="white" className="h-5 w-5">
@@ -204,21 +218,18 @@ export const KanbanBoard = ({
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="hidden items-center gap-2 sm:flex">
-              {board.columns.slice(0, 3).map((column) => (
-                <span
-                  key={column.id}
-                  className="rounded-full bg-[var(--surface)] px-3 py-1 text-[10px] font-medium text-[var(--gray-text)]"
-                >
-                  {column.title}
-                </span>
-              ))}
-              {board.columns.length > 3 && (
-                <span className="text-[10px] text-[var(--gray-text)]">
-                  +{board.columns.length - 3} more
-                </span>
-              )}
-            </div>
+            <BoardSelector
+              boards={boards}
+              currentBoardId={boardId}
+              onSelectBoard={onSelectBoard}
+              onCreateBoard={onCreateBoard}
+              onDeleteBoard={onDeleteBoard}
+            />
+            {username ? (
+              <span className="hidden text-sm font-medium text-[var(--navy-dark)] sm:block">
+                {username}
+              </span>
+            ) : null}
             {onLogout ? (
               <button
                 type="button"
@@ -250,6 +261,7 @@ export const KanbanBoard = ({
                   key={column.id}
                   column={column}
                   cards={column.cardIds.map((cardId) => board.cards[cardId])}
+                  labels={board.labels || {}}
                   onRename={handleRenameColumn}
                   onAddCard={handleAddCard}
                   onDeleteCard={handleDeleteCard}

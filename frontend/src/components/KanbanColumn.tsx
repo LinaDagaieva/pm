@@ -1,13 +1,14 @@
 import clsx from "clsx";
 import { useDndContext, useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import type { Card, Column } from "@/lib/kanban";
+import type { Card, Column, Label } from "@/lib/kanban";
 import { KanbanCard } from "@/components/KanbanCard";
 import { NewCardForm } from "@/components/NewCardForm";
 
 type KanbanColumnProps = {
   column: Column;
   cards: Card[];
+  labels: Record<string, Label>;
   onRename: (columnId: string, title: string) => void;
   onAddCard: (columnId: string, title: string, details: string) => void;
   onDeleteCard: (columnId: string, cardId: string) => void;
@@ -16,6 +17,7 @@ type KanbanColumnProps = {
 export const KanbanColumn = ({
   column,
   cards,
+  labels,
   onRename,
   onAddCard,
   onDeleteCard,
@@ -62,6 +64,7 @@ export const KanbanColumn = ({
               key={card.id}
               card={card}
               columnId={column.id}
+              labels={labels}
               onDelete={(cardId) => onDeleteCard(column.id, cardId)}
             />
           ))}
