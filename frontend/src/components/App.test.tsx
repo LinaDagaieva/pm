@@ -7,8 +7,17 @@ vi.mock("@/lib/auth", () => ({
   logout: vi.fn(),
 }));
 
+vi.mock("@/lib/board", () => ({
+  getBoard: vi.fn(),
+  saveBoard: vi.fn(),
+}));
+
 import { App } from "@/components/App";
 import { getSession } from "@/lib/auth";
+import { getBoard } from "@/lib/board";
+import { initialData } from "@/lib/kanban";
+
+vi.mocked(getBoard).mockResolvedValue(structuredClone(initialData));
 
 describe("App auth gate", () => {
   it("shows login when not authenticated", async () => {

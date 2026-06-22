@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { mockBoard } from "./fixtures";
 
 test("logs in and back out", async ({ page }) => {
   let authed = false;
@@ -15,6 +16,7 @@ test("logs in and back out", async ({ page }) => {
     authed = false;
     return route.fulfill({ json: { ok: true } });
   });
+  await mockBoard(page);
 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();

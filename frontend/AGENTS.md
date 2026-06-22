@@ -66,6 +66,6 @@ npm run test:all       # unit then e2e
 
 ## Notes for later parts
 
-- No persistence today: refreshing resets to `initialData`. Backend wiring (Part 7) replaces the in-memory seed with API reads/writes against `BoardData`-shaped JSON.
+- Persistence: `KanbanBoard` loads the board from `GET /api/board` on mount and saves the whole board via `PUT /api/board` (debounced 400ms) on every edit (`src/lib/board.ts`). `initialData` remains only as a fixture for tests/reference; the backend seeds the real default board.
 - Auth gate (`App.tsx`): on mount it calls `getSession()` (`src/lib/auth.ts`); shows `Login.tsx` when anonymous, the board (with a Log out control) when authenticated. `page.tsx` renders `<App />`.
 - Configured for static export (`output: "export"` in `next.config.ts`): `npm run build` emits `frontend/out`, which the Docker build copies into the backend image's static dir and FastAPI serves at `/`.

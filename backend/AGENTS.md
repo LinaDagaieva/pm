@@ -10,7 +10,11 @@ FastAPI backend for the Kanban PM MVP. Serves the JSON API under `/api/*` and th
 
 ## Layout
 
-- `app/main.py` - FastAPI app. Routes: `GET /api/health`; auth via `POST /api/login`, `POST /api/logout`, `GET /api/session`. Mounts `StaticFiles` at `/` (after the API routes) to serve the static site; directory from `STATIC_DIR` env, default `backend/static`.
+- `app/main.py` - FastAPI app. Routes: `GET /api/health`; auth via `POST /api/login`, `POST /api/logout`, `GET /api/session`; board via `GET /api/board`, `PUT /api/board`. Mounts `StaticFiles` at `/` (after the API routes); directory from `STATIC_DIR` env, default `backend/static`. A lifespan handler calls `init_db()` on startup. `require_user` dependency guards the board routes.
+- `app/models.py` - Pydantic `Card`/`Column`/`Board` (the `BoardData` shape; `Board` validates board payloads).
+- `app/db.py` - stdlib `sqlite3` access. `init_db()` creates tables and seeds the demo user/board; `get_board`/`save_board` read/write the per-user board JSON blob. DB path from `DB_PATH` env (default `backend/data/kanban.db`); created if missing. Schema in `docs/DATABASE.md`.
+- `app/seed.py` - `DEFAULT_BOARD`, the seed board mirroring the frontend demo.
+- `app/ai.py` - OpenRouter client via the `openai` SDK (`OPENROUTER_API_KEY`, base URL `https://openrouter.ai/api/v1`, model `openai/gpt-oss-120b`). `ask()` sends a single question; `POST /api/ai/ping` is the connectivity smoke test. See `docs/AI.md`.
 - Auth: hardcoded `user`/`password`; session stored in a signed cookie via Starlette `SessionMiddleware` (secret from `SESSION_SECRET`, dev default). `GET /api/session` returns `{authenticated, user}`.
 - `static/` - placeholder hello-world page (Part 2). Replaced by the built frontend export in Part 3.
 - `tests/` - pytest suite.

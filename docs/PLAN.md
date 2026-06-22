@@ -83,10 +83,10 @@ Tests / success criteria: wrong credentials rejected; correct credentials reach 
 
 Propose and document the schema; get sign-off.
 
-- [ ] Define schema: `users` table; per-user board stored as JSON (the `BoardData` shape: columns with `cardIds`, cards map).
-- [ ] Document the approach, schema, and example JSON in `docs/DATABASE.md` (tables, columns, how the board JSON is stored/validated, auto-create behavior).
-- [ ] Provide the seed/default board used for a new user.
-- [ ] Get user sign-off on `docs/DATABASE.md`.
+- [x] Define schema: `users` table; per-user board stored as JSON (the `BoardData` shape: columns with `cardIds`, cards map).
+- [x] Document the approach, schema, and example JSON in `docs/DATABASE.md` (tables, columns, how the board JSON is stored/validated, auto-create behavior).
+- [x] Provide the seed/default board used for a new user.
+- [x] Get user sign-off on `docs/DATABASE.md`. (Approved.)
 
 Tests / success criteria: `docs/DATABASE.md` exists and is approved by the user. Schema is consistent with the frontend `BoardData` type.
 
@@ -96,10 +96,10 @@ Tests / success criteria: `docs/DATABASE.md` exists and is approved by the user.
 
 Read/write the Kanban for a user; auto-create DB.
 
-- [ ] SQLite access layer; create DB + tables on startup if missing; seed default board for the demo user.
-- [ ] `GET /api/board` returns the current user's board JSON; `PUT /api/board` replaces it (validated against the board shape).
-- [ ] Validation of incoming board JSON; consistent error responses.
-- [ ] Backend unit tests: get/put round-trip, validation failures, auto-create-on-missing-DB, auth required.
+- [x] SQLite access layer (`app/db.py`, stdlib `sqlite3`); create DB + tables on startup (FastAPI lifespan) if missing; seed demo user + default board (`app/seed.py`).
+- [x] `GET /api/board` returns the current user's board JSON; `PUT /api/board` replaces it (validated against the `Board` model).
+- [x] Validation of incoming board JSON via Pydantic `Board` model; FastAPI returns 422 on invalid payloads. Board routes protected by the `require_user` dependency (Part 4 deferral, now done).
+- [x] Backend unit tests: get/put round-trip, validation failure (422), DB auto-create on startup, auth required (401). 11 backend tests pass; round-trip also verified against the container.
 
 Tests / success criteria: DB file created automatically when absent; get returns seeded board; put persists and survives restart; invalid payloads rejected; unauthenticated requests blocked. Backend test suite passes.
 
@@ -109,10 +109,10 @@ Tests / success criteria: DB file created automatically when absent; get returns
 
 Make the board persistent via the API.
 
-- [ ] Frontend loads board from `GET /api/board` on mount (replace in-memory `initialData` seed).
-- [ ] Persist mutations (move, rename, add, delete) via `PUT /api/board` (whole-board save, debounced as needed).
-- [ ] Loading/empty states; handle save errors simply.
-- [ ] Tests: frontend integration tests with mocked API; full e2e (login -> mutate board -> reload -> changes persisted).
+- [x] Frontend loads board from `GET /api/board` on mount (`src/lib/board.ts`; `KanbanBoard` no longer seeds `initialData`).
+- [x] Persist mutations (move, rename, add, delete) via `PUT /api/board`, whole-board save debounced 400ms to coalesce rapid edits; timer cleared on unmount.
+- [x] Loading state while fetching; simple save-error banner on failed `PUT`.
+- [x] Tests: component tests with mocked board lib (load + persist on add); e2e persistence across reload via a stateful board mock; real wiring verified against the container (bundle calls `/api/board`, authed GET 200).
 
 Tests / success criteria: changes persist across reload and container restart; board reflects backend state on load. Unit, integration, and e2e tests pass.
 
@@ -122,10 +122,11 @@ Tests / success criteria: changes persist across reload and container restart; b
 
 Verify OpenRouter calls work.
 
-- [ ] Backend OpenRouter client reading `OPENROUTER_API_KEY` from env; model `openai/gpt-oss-120b`.
-- [ ] `POST /api/ai/ping` (or test) that sends "what is 2+2" and returns the model's answer.
-- [ ] Verify whether the model/route supports Structured Outputs (JSON schema); record the finding and the fallback decision in docs.
-- [ ] Test: connectivity test asserting a sensible response to "2+2" (mocked in CI, live check documented).
+- [x] Backend OpenRouter client reading `OPENROUTER_API_KEY` from env; model `openai/gpt-oss-120b` (`app/ai.py`, openai SDK pointed at OpenRouter).
+- [x] `POST /api/ai/ping` (auth-gated) sends "what is 2+2"; returns the model's answer, 502 with upstream detail on error.
+- [x] Verify Structured Outputs support; recorded in `docs/AI.md`. Live-verified: `openai/gpt-oss-120b` via OpenRouter supports strict `json_schema` response_format. No fallback needed.
+- [x] Test: connectivity tests with the AI mocked (answer, auth-required, error path). 14 backend tests pass.
+- [x] Live 2+2 verified: `POST /api/ai/ping` returns `{"answer":"4"}` (200) with a working key.
 
 Tests / success criteria: a real call returns a correct "4" answer locally; client handles missing key and API errors gracefully; structured-output capability documented. Tests pass (external call mocked in the suite).
 

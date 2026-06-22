@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { mockBoard, mockSession } from "./fixtures";
 
-// The board lives behind the auth gate; mock an authenticated session so these
-// tests exercise board behavior directly.
+// The board lives behind the auth gate and loads from the API; mock an
+// authenticated session and the board endpoint.
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/session", (route) =>
-    route.fulfill({ json: { authenticated: true, user: "user" } })
-  );
+  await mockSession(page, true);
+  await mockBoard(page);
 });
 
 test("loads the kanban board", async ({ page }) => {
@@ -46,4 +46,18 @@ test("moves a card between columns", async ({ page }) => {
   );
   await page.mouse.up();
   await expect(targetColumn.getByTestId("card-card-1")).toBeVisible();
+});
+
+test("persists a new card across reload", async ({ page }) => {
+  await page.goto("/");
+  const firstColumn = page.locator('[data-testid^="column-"]').first();
+  await firstColumn.getByRole("button", { name: /add a card/i }).click();
+  await firstColumn.getByPlaceholder("Card title").fill("Persisted card");
+  await firstColumn.getByRole("button", { name: /add card/i }).click();
+  await expect(firstColumn.getByText("Persisted card")).toBeVisible();
+
+  // Wait for the debounced PUT to flush, then reload from the (mocked) backend.
+  await page.waitForTimeout(700);
+  await page.reload();
+  await expect(page.getByText("Persisted card")).toBeVisible();
 });

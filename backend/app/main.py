@@ -1,20 +1,39 @@
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.middleware.sessions import SessionMiddleware
+
+from app import ai
+from app.db import get_board, init_db, save_board
+from app.models import Board
 
 # Hardcoded MVP credentials (the DB will support real users later).
 USERNAME = "user"
 PASSWORD = "password"
 
-app = FastAPI(title="Kanban PM")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="Kanban PM", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
     secret_key=os.environ.get("SESSION_SECRET", "dev-secret-change-me"),
 )
+
+
+def require_user(request: Request) -> str:
+    user = request.session.get("user")
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user
 
 
 @app.get("/api/health")
@@ -45,6 +64,26 @@ def logout(request: Request):
 def session(request: Request):
     user = request.session.get("user")
     return {"authenticated": user is not None, "user": user}
+
+
+@app.get("/api/board")
+def read_board(user: str = Depends(require_user)) -> Board:
+    return get_board(user)
+
+
+@app.put("/api/board")
+def write_board(board: Board, user: str = Depends(require_user)) -> Board:
+    save_board(user, board)
+    return board
+
+
+@app.post("/api/ai/ping")
+def ai_ping(user: str = Depends(require_user)):
+    try:
+        answer = ai.ask("What is 2+2? Reply with only the number.")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"AI request failed: {exc}")
+    return {"answer": answer}
 
 
 # Static site (placeholder now; the built frontend in Part 3). Mounted last so
