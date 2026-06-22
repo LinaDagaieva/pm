@@ -1,5 +1,13 @@
 import { expect, test } from "@playwright/test";
 
+// The board lives behind the auth gate; mock an authenticated session so these
+// tests exercise board behavior directly.
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/session", (route) =>
+    route.fulfill({ json: { authenticated: true, user: "user" } })
+  );
+});
+
 test("loads the kanban board", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Kanban Studio" })).toBeVisible();

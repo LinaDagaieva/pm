@@ -19,7 +19,13 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        launchOptions: {
+          // Disable GPU/Vulkan; avoids ANGLE init failures in headless/constrained envs.
+          args: ["--disable-gpu", "--disable-dev-shm-usage"],
+        },
+      },
     },
   ],
 });
