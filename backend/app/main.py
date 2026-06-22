@@ -86,6 +86,36 @@ def ai_ping(user: str = Depends(require_user)):
     return {"answer": answer}
 
 
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    history: list[ChatMessage] = []
+
+
+@app.post("/api/ai/chat")
+def ai_chat(request: ChatRequest, user: str = Depends(require_user)):
+    board = get_board(user)
+    try:
+        result = ai.chat(
+            request.message,
+            [message.model_dump() for message in request.history],
+            board,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"AI request failed: {exc}")
+
+    if result.board_update is None:
+        return {"reply": result.reply, "board": None}
+
+    updated = ai.ai_board_to_board(result.board_update)
+    save_board(user, updated)
+    return {"reply": result.reply, "board": updated}
+
+
 # Static site (placeholder now; the built frontend in Part 3). Mounted last so
 # the API routes above take precedence.
 STATIC_DIR = Path(os.environ.get("STATIC_DIR", Path(__file__).parent.parent / "static"))

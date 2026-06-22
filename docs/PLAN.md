@@ -7,11 +7,20 @@ Detailed, checklist-driven plan for the 10-part build. Each part has substeps, t
 - Serving: Next.js static export (`output: "export"`) built into `frontend/out`, served by FastAPI as static files at `/`. Single process, no Next.js server. All data access goes through the FastAPI API.
 - Database: SQLite. Users in a relational `users` table; each user's board persisted as a single JSON blob (matching the frontend `BoardData` shape) rather than normalized column/card tables. DB auto-created on first run if missing.
 - Auth: server-set session cookie issued by FastAPI on successful login with hardcoded `user` / `password`. Logout clears the cookie.
-- AI: OpenRouter, model `openai/gpt-oss-120b`. Part 8 verifies Structured Outputs (JSON schema) support; if unsupported on that route, fall back to JSON mode plus server-side schema validation (decision recorded in docs at that time).
+- AI: OpenRouter (OpenAI-compatible API) via the `openai` SDK, model `openai/gpt-oss-120b` (override with `OPENROUTER_MODEL`). Structured Outputs (strict `json_schema` response_format) were live-verified as supported on this model/route in Part 8, so no JSON-mode fallback is needed. Details in `docs/AI.md`.
 - Package management: `uv` for Python inside Docker. Python deps pinned via `pyproject.toml` + `uv.lock`.
 - Approval gates: explicit user sign-off at Part 1 (this plan) and Part 5 (DB approach). Other parts run through, but each ends in a passing-tests checkpoint.
 - Testing: write valuable tests (core logic, integration points, regressions). Aim for ~80% coverage only when sensible; do not add tests purely to hit a number. Falling short of 80% is fine.
 - Standards (from AGENTS.md): latest idiomatic library versions; keep it simple, no over-engineering or unnecessary defensive code; concise/minimal docs; no emojis; root-cause before fixing.
+
+## Implementation decisions (made during the build)
+
+- Sessions: signed cookie via Starlette `SessionMiddleware`; secret from `SESSION_SECRET` (dev default if unset).
+- DB location: `DB_PATH` env (default `backend/data/kanban.db` locally, `/app/data/kanban.db` in the container); gitignored. The container runs with `--rm` and no volume, so the SQLite DB is ephemeral - it resets when the container is removed (survives page reloads and in-container restarts, not container removal). Add a Docker volume mapping `DB_PATH` if cross-removal persistence is wanted.
+- Frontend persistence: whole-board `PUT /api/board` debounced 400ms to coalesce rapid edits; debounce timer cleared on unmount (avoids a save firing after logout/unmount).
+- Scripts: `.sh` for Mac/Linux and `.ps1` for Windows PowerShell; no `.cmd` variant (PowerShell covers Windows).
+- E2E strategy: Playwright runs against the Next dev server with `/api/*` mocked via route handlers (stateful board mock for persistence/reload tests); real full-stack flows (login, board round-trip, AI ping) are verified via container curl checks. Chromium is launched with `--disable-gpu`/`--disable-dev-shm-usage` for headless/low-memory robustness.
+- AI endpoints are auth-gated; on client/API errors they return 502 with the upstream message in `detail`.
 
 ## Repository layout (target)
 
@@ -19,9 +28,9 @@ Detailed, checklist-driven plan for the 10-part build. Each part has substeps, t
 backend/        FastAPI app, AI client, SQLite access, tests
 frontend/       Next.js app (existing demo; statically exported)
 scripts/        start/stop scripts for Mac, Linux, PC
-docs/           planning + design docs (this file, DB design)
+docs/           planning + design docs (this file, DATABASE.md, AI.md)
 Dockerfile      multi-stage: build frontend, assemble Python backend
-.env            OPENROUTER_API_KEY (already present)
+.env            OPENROUTER_API_KEY (gitignored)
 ```
 
 ---
@@ -31,7 +40,7 @@ Dockerfile      multi-stage: build frontend, assemble Python backend
 - [x] Enrich this document with detailed substeps, tests, and success criteria per part.
 - [x] Record key technical decisions / defaults.
 - [x] Create `frontend/AGENTS.md` describing the existing frontend code.
-- [ ] Get user review and approval of this plan.
+- [x] Get user review and approval of this plan. (Approved.)
 
 Tests / success criteria: user explicitly approves the plan. `frontend/AGENTS.md` accurately reflects the current frontend (stack, data model, components, commands).
 
@@ -72,7 +81,7 @@ Gate `/` behind a login screen; support logout.
 
 - [x] Backend: `POST /api/login` (validates `user`/`password`, sets session cookie via Starlette `SessionMiddleware`), `POST /api/logout` (clears cookie), `GET /api/session` (returns auth state).
 - [x] Frontend: login screen (`Login.tsx`); `App.tsx` gate fetches `/api/session` and shows login or board; logout control in the board header.
-- [ ] Protect board data routes behind the session — deferred to Part 6 (no board routes exist yet); `require_user` dependency added there.
+- [x] Protect board data routes behind the session — done in Part 6: `require_user` dependency added and applied to the board routes (no board routes existed yet at Part 4).
 - [x] Tests: backend unit tests for login/logout/session (valid, invalid, anonymous); frontend component test for the login gate; e2e for the full login -> board -> logout flow and invalid-credentials error (API mocked in Playwright; real flow verified against the container).
 
 Tests / success criteria: wrong credentials rejected; correct credentials reach the board; logout returns to login; refresh preserves session via cookie. All new and existing tests pass.
@@ -136,10 +145,11 @@ Tests / success criteria: a real call returns a correct "4" answer locally; clie
 
 Always call the AI with the board JSON + user question + history; return Structured Outputs.
 
-- [ ] `POST /api/ai/chat`: input = user message + conversation history; server attaches current board JSON.
-- [ ] Define the structured output schema: `{ reply: string, board_update?: BoardData }` (or a diff form, decided here).
-- [ ] Apply `board_update` to persistence when present; return reply (and updated board) to the client.
-- [ ] Tests: structured response parsed/validated; reply-only vs reply+update paths; invalid model output handled; board update persisted.
+- [x] `POST /api/ai/chat` (auth-gated): input = `{ message, history: [{role, content}] }`; server attaches the current board JSON as a system message.
+- [x] Structured output via `client.chat.completions.parse` with `ChatResult { reply: str, board_update: AiBoard | null }`. AI-facing `AiBoard` uses cards as a list (strict json_schema disallows arbitrary-key maps); converted to/from the internal `Board` (cards map) server-side.
+- [x] Apply `board_update` to persistence when present (save_board); response is `{ reply, board: BoardData | null }`. System prompt keeps columns fixed, ids stable, no emojis.
+- [x] Tests: conversion round-trip; reply-only (board unchanged, current board attached); reply+update persisted; auth required (401); AI error -> 502. 19 backend tests pass.
+- [x] Live-verified: question answered with no board change; "add a card" and "move a card" applied and persisted (GET reflects them); replies emoji-free.
 
 Tests / success criteria: AI can answer questions about the board and, when it chooses, return a valid board update that is persisted. Schema validation enforced. Tests pass (model mocked for deterministic cases; one live smoke check documented).
 
@@ -149,10 +159,10 @@ Tests / success criteria: AI can answer questions about the board and, when it c
 
 Beautiful sidebar widget with full chat that can update the board.
 
-- [ ] Sidebar chat widget (color scheme, send/receive, history, loading state) wired to `POST /api/ai/chat`.
-- [ ] When the response includes a board update, refresh the board UI automatically.
-- [ ] Accessible, responsive layout consistent with the existing design.
-- [ ] Tests: component tests for chat send/receive and auto-refresh on update; e2e where an AI instruction visibly changes the board.
+- [x] Sidebar chat widget (`ChatSidebar.tsx`): toggle button, message history, input, loading ("Thinking...") and error states, app color scheme; wired to `POST /api/ai/chat` via `src/lib/chat.ts`.
+- [x] When the response includes a board update, refresh the board UI automatically (sidebar calls `onBoardUpdate={setBoard}` in `KanbanBoard`; no extra save since the AI endpoint already persisted).
+- [x] Accessible (labelled input/buttons, `aria-label` on the panel), responsive fixed panel consistent with the design.
+- [x] Tests: component tests (send/receive, auto-refresh via `onBoardUpdate`); e2e where an AI instruction adds a card that becomes visible on the board. Lint clean; bundle references `/api/ai/chat`.
 
 Tests / success criteria: user can chat in the sidebar; AI-driven create/edit/move updates the board and the UI refreshes without manual reload. Unit, integration, and e2e tests pass.
 
@@ -161,6 +171,6 @@ Tests / success criteria: user can chat in the sidebar; AI-driven create/edit/mo
 ## Definition of done (overall)
 
 - App runs in a single Docker container locally via the start script.
-- Login gate works; board persists in SQLite across restarts.
+- Login gate works; board persists in SQLite across page reloads and in-container restarts (DB is ephemeral under `--rm`; add a volume for persistence across container removal).
 - AI chat sidebar can create/edit/move cards via Structured Outputs and the UI refreshes.
 - Unit, integration, and e2e tests pass; docs (`AGENTS.md` files, `docs/DATABASE.md`, README) are current and minimal.

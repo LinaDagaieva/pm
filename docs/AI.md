@@ -12,6 +12,11 @@ The backend calls an LLM via OpenRouter using the OpenAI-compatible API.
 ## Endpoints
 
 - `POST /api/ai/ping` (auth required) - sends "what is 2+2" and returns `{ "answer": ... }`. Connectivity smoke test. On any client/API error it returns 502 with the upstream message in `detail`.
+- `POST /api/ai/chat` (auth required) - body `{ message, history: [{ role, content }] }`. The server attaches the current board JSON and asks the model for structured output `ChatResult { reply, board_update? }`. If `board_update` is present it is converted and persisted; the response is `{ reply, board: BoardData | null }`. Errors return 502 with the upstream message.
+
+## Chat board schema
+
+The internal `Board` stores `cards` as a map (`dict[str, Card]`), which strict `json_schema` cannot express (no arbitrary-key maps). The AI-facing `AiBoard` therefore uses `cards` as a list; `app/ai.py` converts between the two (`board_to_ai_board` / `ai_board_to_board`). The model is instructed to keep columns fixed, keep ids stable, generate new ids for new cards, keep `cardIds` consistent with `cards`, and avoid emojis.
 
 ## Connectivity status
 

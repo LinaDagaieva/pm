@@ -13,6 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { KanbanColumn } from "@/components/KanbanColumn";
 import { KanbanCardPreview } from "@/components/KanbanCardPreview";
+import { ChatSidebar } from "@/components/ChatSidebar";
 import { createId, moveCard, type BoardData } from "@/lib/kanban";
 import { getBoard, saveBoard } from "@/lib/board";
 
@@ -216,6 +217,10 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps = {}) => {
           </DragOverlay>
         </DndContext>
       </main>
+
+      {/* The AI endpoint persists changes server-side, so reflect its board
+          directly without triggering another save. */}
+      <ChatSidebar onBoardUpdate={setBoard} />
     </div>
   );
 };

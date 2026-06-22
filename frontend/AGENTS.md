@@ -34,7 +34,8 @@ type BoardData = { columns: Column[]; cards: Record<string, Card> };
 
 ## Components (`src/components/`)
 
-- `KanbanBoard.tsx` - top-level client component (`"use client"`). Owns `board` state (seeded from `initialData`) and `activeCardId`. Wires `DndContext` (PointerSensor, `closestCorners`), and holds handlers: `handleDragStart`, `handleDragEnd` (calls `moveCard`), `handleRenameColumn`, `handleAddCard`, `handleDeleteCard`. Renders the header and a 5-column grid plus a `DragOverlay`.
+- `KanbanBoard.tsx` - top-level client component (`"use client"`). Loads `board` from the API and owns it; holds drag/rename/add/delete handlers (each persists via debounced `PUT`). Renders the header, a 5-column grid, a `DragOverlay`, and the `ChatSidebar`. The sidebar's `onBoardUpdate` calls `setBoard` directly (the AI endpoint already persisted).
+- `ChatSidebar.tsx` - floating AI assistant panel (`"use client"`). Keeps message history, input, loading/error state; posts to `/api/ai/chat` via `src/lib/chat.ts`. When the reply includes a board, calls `onBoardUpdate(board)` so the board refreshes automatically.
 - `KanbanColumn.tsx` - a droppable column (`useDroppable`). Renders an editable title input (rename on change), a card count, a `SortableContext` of cards, an empty-state placeholder, and `NewCardForm`. Has `data-testid="column-<id>"`.
 - `KanbanCard.tsx` - a sortable card (`useSortable`). Shows title, details, and a Remove button. Has `data-testid="card-<id>"`.
 - `KanbanCardPreview.tsx` - static card visual used inside `DragOverlay` during a drag.
