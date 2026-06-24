@@ -4,6 +4,8 @@
 **/.venv
 .venv
 backend/.pytest_cache
+backend/data/
+.env
 frontend/node_modules
 frontend/.next
 frontend/out

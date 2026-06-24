@@ -12,6 +12,7 @@ export async function sendChat(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message, history }),
+    credentials: "include",
   });
   if (!res.ok) {
     let detail = `Request failed (${res.status})`;

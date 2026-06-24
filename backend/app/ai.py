@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from app.models import Board, Card, Column
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-oss-120b")
+MODEL = os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o")
 
 SYSTEM_PROMPT = (
     "You are a project management assistant for a single Kanban board. "
@@ -44,11 +44,22 @@ def ai_board_to_board(ai_board: AiBoard) -> Board:
     )
 
 
-def _client() -> OpenAI:
+def _get_client() -> OpenAI:
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY is not set")
     return OpenAI(base_url=OPENROUTER_BASE_URL, api_key=api_key)
+
+
+# Module-level singleton client (reused across requests).
+_client: OpenAI | None = None
+
+
+def _client() -> OpenAI:
+    global _client
+    if _client is None:
+        _client = _get_client()
+    return _client
 
 
 def ask(question: str) -> str:
@@ -56,6 +67,7 @@ def ask(question: str) -> str:
     response = _client().chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": question}],
+        timeout=60.0,
     )
     return response.choices[0].message.content or ""
 
@@ -75,6 +87,7 @@ def chat(message: str, history: list[dict], board: Board) -> ChatResult:
         model=MODEL,
         messages=messages,
         response_format=ChatResult,
+        timeout=60.0,
     )
     result = completion.choices[0].message.parsed
     if result is None:

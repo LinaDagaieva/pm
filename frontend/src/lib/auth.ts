@@ -1,11 +1,19 @@
-export type Session = { authenticated: boolean; user: string | null };
+export type Session = {
+  authenticated: boolean;
+  user: string | null;
+  error?: "network_error" | "server_error";
+};
 
 export async function getSession(): Promise<Session> {
-  const res = await fetch("/api/session");
-  if (!res.ok) {
-    return { authenticated: false, user: null };
+  try {
+    const res = await fetch("/api/session", { credentials: "include" });
+    if (!res.ok) {
+      return { authenticated: false, user: null, error: "server_error" };
+    }
+    return res.json();
+  } catch {
+    return { authenticated: false, user: null, error: "network_error" };
   }
-  return res.json();
 }
 
 export async function login(
@@ -16,10 +24,15 @@ export async function login(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
+    credentials: "include",
   });
   return res.ok;
 }
 
 export async function logout(): Promise<void> {
-  await fetch("/api/logout", { method: "POST" });
+  try {
+    await fetch("/api/logout", { method: "POST", credentials: "include" });
+  } catch (err) {
+    console.error("Logout failed:", err);
+  }
 }

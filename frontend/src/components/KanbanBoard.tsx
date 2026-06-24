@@ -34,7 +34,9 @@ export const KanbanBoard = ({ onLogout }: KanbanBoardProps = {}) => {
   );
 
   useEffect(() => {
-    getBoard().then(setBoard);
+    getBoard()
+      .then(setBoard)
+      .catch((err) => console.error("Failed to load board:", err));
     return () => {
       if (saveTimer.current) {
         clearTimeout(saveTimer.current);

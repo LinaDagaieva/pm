@@ -5,6 +5,9 @@ from pathlib import Path
 from app.models import Board
 from app.seed import DEFAULT_BOARD
 
+# Cached serialization of the default board to avoid recomputing on every call.
+_DEFAULT_BOARD_JSON = DEFAULT_BOARD.model_dump_json()
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,7 +50,7 @@ def _ensure_user(conn: sqlite3.Connection, username: str) -> None:
     cursor = conn.execute("INSERT INTO users (username) VALUES (?)", (username,))
     conn.execute(
         "INSERT INTO boards (user_id, data) VALUES (?, ?)",
-        (cursor.lastrowid, DEFAULT_BOARD.model_dump_json()),
+        (cursor.lastrowid, _DEFAULT_BOARD_JSON),
     )
 
 

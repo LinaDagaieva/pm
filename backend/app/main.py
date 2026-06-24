@@ -4,7 +4,9 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import ai
@@ -15,6 +17,10 @@ from app.models import Board
 USERNAME = "user"
 PASSWORD = "password"
 
+_secret = os.environ.get("SESSION_SECRET")
+if not _secret:
+    raise RuntimeError("SESSION_SECRET environment variable is required")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -23,10 +29,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Kanban PM", lifespan=lifespan)
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=os.environ.get("SESSION_SECRET", "dev-secret-change-me"),
-)
+app.add_middleware(SessionMiddleware, secret_key=_secret)
 
 
 def require_user(request: Request) -> str:
@@ -78,7 +81,7 @@ def write_board(board: Board, user: str = Depends(require_user)) -> Board:
 
 
 @app.post("/api/ai/ping")
-def ai_ping(user: str = Depends(require_user)):
+def ai_ping(_user: str = Depends(require_user)):
     try:
         answer = ai.ask("What is 2+2? Reply with only the number.")
     except Exception as exc:
@@ -87,13 +90,12 @@ def ai_ping(user: str = Depends(require_user)):
 
 
 class ChatMessage(BaseModel):
-    role: str
-    content: str
+    role: Literal["user", "assistant", "system"]
 
 
 class ChatRequest(BaseModel):
     message: str
-    history: list[ChatMessage] = []
+    history: list[ChatMessage] = Field(default_factory=list, max_length=100)
 
 
 @app.post("/api/ai/chat")
